@@ -5,6 +5,7 @@ import torch
 import numpy as np
 
 from typing import List
+from torch.nn.functional import softmax
 
 from tqdm.auto import trange
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, \
@@ -33,7 +34,7 @@ class EvalutionSingletonInitializer():
         return self.instance.toxic_tokenizer
 
     def get_toxic_classifier(self):
-        return self.instance.get_toxic_classifier
+        return self.instance.toxic_classifier
     
 
 def cleanup():
@@ -42,19 +43,25 @@ def cleanup():
         torch.cuda.empty_cache()
 
 
-def toxic_classification(sentences: List[str], batch_size: int = None, logits: bool = False):
+def toxic_classification(sentences: List[str], batch_size: int = None, return_logits: bool = False):
     # start by defining the singleton object
     singleton_obj = EvalutionSingletonInitializer()
     model, tokenizer = singleton_obj.get_toxic_classifier(), singleton_obj.get_toxic_tokenizer()
     
+    device = singleton_obj.get_device()
+    model.to(device=device)
+
     # a 'batch_size' implies classifying the entire data at once
     if batch_size is None:
         model_input = tokenizer(sentences, return_tensors='pt', padding=True, truncation=True)
+        # make sure the input is in the same device as the model
+        model_input = {k: v.to(device=device) for k, v in model_input.items()}
+        # inference time    
         with torch.inference_mode():
-            logits = model(**model_input)
-            if logits:
+            logits = model(**model_input).logits
+            if return_logits:
                 return logits            
-            return np.argmax(logits.cpu().numpy(), axis=1)[:, 1]
+            return softmax(logits, dim=1).cpu().numpy()[:, 1]
 
 
     results = []
@@ -62,10 +69,12 @@ def toxic_classification(sentences: List[str], batch_size: int = None, logits: b
         # extract the batch
         batch_sentences = sentences[batch_size * i: (batch_size + 1) * i]
         # tokenize it
-        modle_input = tokenizer(batch_sentences, padding=True, truncation=True)
+        model_input = tokenizer(batch_sentences, padding=True, truncation=True)
         with torch.inference_mode():
-            logits = model(**model_input)
-            results.extend((logits.tolist()) if logits else (np.argmax(logits.cpu().numpy(), axis=1)[:, 1].tolist()))
+            logits = model(**model_input).logits        
+            output = logits.tolist() if return_logits else softmax(logits, dim=1).cpu().numpy()[:, 1].tolist() 
+            results.extend(output)
+            # results.extend((logits.tolist()) if logits else (np.argmax(logits.cpu().numpy(), axis=1)[:, 1].tolist()))
     
     return results
 

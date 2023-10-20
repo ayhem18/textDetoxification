@@ -7,8 +7,16 @@ This is a utility script
 import re
 import requests
 import os
+import nltk
 
-from typing import List, Set
+from nltk.corpus import stopwords
+from nltk.tokenize.casual import TweetTokenizer
+from nltk.tokenize import word_tokenize, RegexpTokenizer
+
+from typing import List, Set, Union
+from nltk.stem import WordNetLemmatizer
+
+## Vocabulary related functions
 
 def extended_english_dict(dict_file_name = 'dictionary.txt') -> Set:
     dictionary_file_url = 'https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt'
@@ -33,7 +41,6 @@ def extended_english_dict(dict_file_name = 'dictionary.txt') -> Set:
 
     return dictionary
 
-
 def extended_stop_words(stop_words_file_name: str = 'stop_words.txt') -> Set:
     stopwords_file_url = 'https://raw.githubusercontent.com/stopwords-iso/stopwords-en/master/stopwords-en.txt'
     r = requests.get(stopwords_file_url, allow_redirects=True)
@@ -53,13 +60,60 @@ def extended_stop_words(stop_words_file_name: str = 'stop_words.txt') -> Set:
             if len(word) >= 2:
                 stop_words.add(word)
 
+
     return stop_words
 
-def simple_stop_words() -> Set:
-    # create a set object out of the list of stop words provided by the nltk package
-    pass
+def standard_stop_words() -> Set:
+    try:
+        return set(stopwords.words('english'))
+    except OSError:
+        nltk.download('stopwords')
+        return set(stopwords.words('english'))
+
+# Tokenization functions
+def _tweek_tokenize(sentence: str) -> List[str]:
+    return TweetTokenizer().tokenize(sentence)
+
+def _word_tokenize(sentence: str) -> List[str]:
+    return word_tokenize(sentence)
+
+def _space_tokenize(sentence: str) -> List[str]:
+    return RegexpTokenizer('\s+').tokenize(sentence)
+
+def tokenize(sentence: str, tokenizer_type='tweet') -> List[str]:
+    if tokenizer_type not in ['tweet', 'space', 'word']:
+        raise ValueError(f"Please make sure to pass a supported tokenizer_type: {['twitter', 'space', 'word']}")
+
+    tokenizers = {'tweet': _tweek_tokenize, 'space': _space_tokenize, "word": _word_tokenize}
+    return tokenizers[tokenizer_type](sentence)
 
 
+def filter_text(sentence: str, 
+                filter_words: set[str] = None, 
+                filter_function: callable = None, 
+                tokenizer = None, 
+                tokenizer_type: str = 'tweet') -> str:
+    # at least 'filler_words' or 'filter_functions' must be passed
+    if filter_words is None and filter_function is None:
+        raise TypeError(f"At least one of the arguments: 'filter_words' or 'filter_functions' must be passed")
+
+    filter_function = lambda _ : True if filter_function is None else filter_function
+    filter_words = set() if filter_function is None else filter_words
+    
+    # tokenize
+    tokens = tokenize(sentence)
+    tokens = [t for t in tokens if t not in filter_words and filter_function(t)]
+
+    return " ".join(tokens)
+
+def lemmatize(sentence: Union[str, List[str]]) -> List[str]:
+    lem = WordNetLemmatizer()
+    tokens = tokenize(sentence) if isinstance(sentence, str) else sentence
+    # lemmatize
+    tokens = [lem.lemmatize(t.strip().lower()) for t in tokens]
+    return tokens
+
+# filtering functions
 
 def to_lower(text: str) -> str:
     return text.lower()
@@ -68,7 +122,7 @@ def no_extra_spaces(text: str) -> str:
     return re.sub('\s+', ' ', text)
 
 def no_extra_chars(text: str) -> str:
-    return re.sub(r'[^a-zA-Z\s,!.;:-]+', ' ', text) 
+    return re.sub(r"[^a-zA-Z\s,!.;:'-]+", ' ', text).strip() 
 
 def sub_regex(text: str, regex: str, sub: str = '') -> str:
     return re.sub(regex, sub, text)
