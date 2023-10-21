@@ -4,3 +4,5 @@ env
 data
 .idea
 *.pyc
+*tfevents*
+

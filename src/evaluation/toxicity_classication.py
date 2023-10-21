@@ -8,9 +8,7 @@ from typing import List
 from torch.nn.functional import softmax
 
 from tqdm.auto import trange
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, \
-    RobertaTokenizer, RobertaForSequenceClassification
-
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 # create a singletonInitializer to avoid repetitively loading the classification model 
 
@@ -22,8 +20,8 @@ class EvalutionSingletonInitializer():
         if not hasattr(cls, 'instance'):
             cls.instance = super(EvalutionSingletonInitializer, cls).__new__(cls)            
             cls.instance.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            cls.instance.toxic_tokenizer = RobertaTokenizer.from_pretrained(_TOXIC_CLASSIFIER_CHECKPNT)
-            cls.instance.toxic_classifier = RobertaForSequenceClassification.from_pretrained(_TOXIC_CLASSIFIER_CHECKPNT)
+            cls.instance.toxic_tokenizer = AutoTokenizer.from_pretrained(_TOXIC_CLASSIFIER_CHECKPNT)
+            cls.instance.toxic_classifier = AutoModelForSequenceClassification.from_pretrained(_TOXIC_CLASSIFIER_CHECKPNT)
         
         return cls.instance
     
@@ -85,8 +83,8 @@ def classify_preds(args, preds, soft=False):
 
     model_name = args.classifier_path or 'SkolkovoInstitute/roberta_toxicity_classifier'
 
-    tokenizer = RobertaTokenizer.from_pretrained(model_name)
-    model = RobertaForSequenceClassification.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
     for i in tqdm.tqdm(range(0, len(preds), args.batch_size)):
         batch = tokenizer(preds[i:i + args.batch_size], return_tensors='pt', padding=True)
