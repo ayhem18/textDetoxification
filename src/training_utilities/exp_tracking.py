@@ -58,3 +58,31 @@ def save_info(save_path: Union[Path, str],
         p = os.path.join(save_path, (name + '.pkl'))
         with open(p, 'wb') as f:
             pickle.dump(obj, f)
+
+def _add_metric(writer: SummaryWriter,
+                tag: str,
+                values: Union[float, Dict[str, float]],
+                epoch: int 
+                ):
+    if writer is not None:
+        if isinstance(values, float):
+            writer.add_scalar(tag, values, global_step=epoch)
+        else:
+            writer.add_scalars(tag, tag_scalar_dict=values, global_step=epoch)
+
+        writer.close()
+        
+
+def report_results(train_losses_dict: Dict, 
+                      val_losses_dict: Dict):
+    
+    print("Training losses")
+    
+    for k, v in train_losses_dict.items():
+        print(f"{k}: {v}")
+
+    for k, v in val_losses_dict.items():
+        print(f"{k}: {v}")
+
+    print("#" * 50)
+    print()
