@@ -152,6 +152,6 @@ def uniform_ne_batched(strings: Iterable[str], nlp = None) -> List[str]:
     # set the default nlp objects
     nlp = spacy.load("en_core_web_sm") if nlp is None else nlp
     # create the pipeline: only keeps components relevant to NER
-    pipe = nlp.pipe(texts=strings, disable=['tagger', 'attribute_ruler', 'senter'], )
+    pipe = nlp.pipe(texts=strings, disable=['tagger', 'attribute_ruler', 'senter'])
     
     return [_uniform_ne(doc, SPACY_LABELS) for doc in pipe]

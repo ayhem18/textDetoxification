@@ -52,11 +52,11 @@ def fix_initial_data(initial_data_tsv: Union[Path, str]):
     df_fixed.to_csv(os.path.join(data_folder, 'fixed.csv'), index=False)
 
 
-def prepare_all_data(fixed_data_file: Union[Path, str]):    
+def prepare_all_data(fixed_data_file: Union[Path, str], save: bool=True):    
     base_name, ext = os.path.splitext(os.path.basename(fixed_data_file))
 
     if base_name != 'fixed' or ext != '.csv':
-        raise ValueError(f"The initial data is expected to be saved in a file named 'fixed.tsv'")
+        raise ValueError(f"The initial data is expected to be saved in a file named 'fixed.csv'")
     
     # load the data as a Dataset object
     original_data = load_dataset('csv', data_files=fixed_data_file, split='train')
@@ -73,8 +73,9 @@ def prepare_all_data(fixed_data_file: Union[Path, str]):
     # save the data
 
     data_folder = Path(fixed_data_file).parent    
-    all_data.to_csv(os.path.join(data_folder, 'all_data.csv'), index=False, sep=',')
-
+    if save:
+        all_data.to_csv(os.path.join(data_folder, 'all_data.csv'), index=False, sep=',')
+    return all_data
 
 def data_split(all_data: Union[Dataset, Path, str],
                train_portion: float = 0.96, 
