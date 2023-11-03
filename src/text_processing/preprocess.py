@@ -2,18 +2,18 @@
 This is a utility script
 """
 
-
 # preprocessing functions
 import re
 import requests
 import os
 import nltk
+import spacy 
 
 from nltk.corpus import stopwords
 from nltk.tokenize.casual import TweetTokenizer
 from nltk.tokenize import word_tokenize, RegexpTokenizer
 
-from typing import List, Set, Union
+from typing import List, Set, Union, Iterable, Dict
 from nltk.stem import WordNetLemmatizer
 
 ## Vocabulary related functions
@@ -126,3 +126,32 @@ def no_extra_chars(text: str) -> str:
 
 def sub_regex(text: str, regex: str, sub: str = '') -> str:
     return re.sub(regex, sub, text)
+
+# the reduce the number of UNK tokens, we will convert certain tokens with their Name Entity.
+# the spacy packages is perfect for our purposes
+
+
+SPACY_LABELS = {"NORP": "group", "ORG": "organization", "GPE": "location", "LOC": "location", "WORK_OF_ART": "art", "FAC": "facility"}
+
+def _uniform_ne(doc_obj, label_name_map: Dict):
+    last_ne = None
+    tokens = []
+    for t in doc_obj:
+        if t.ent_type != 0:
+            if last_ne is None or last_ne != t.ent_type:
+                # append label in this case, make sure the useful name is passed
+                tokens.append((label_name_map[t.ent_type_] if (t.ent_type_ in label_name_map) else t.ent_type_))
+                # tokens.append(t.ent_type_)
+        else:
+            tokens.append(t.text)
+        last_ne = t.ent_type
+        
+    return " ".join(tokens)        
+
+def uniform_ne_batched(strings: Iterable[str], nlp = None) -> List[str]: 
+    # set the default nlp objects
+    nlp = spacy.load("en_core_web_sm") if nlp is None else nlp
+    # create the pipeline: only keeps components relevant to NER
+    pipe = nlp.pipe(texts=strings, disable=['tagger', 'attribute_ruler', 'senter'], )
+    
+    return [_uniform_ne(doc, SPACY_LABELS) for doc in pipe]
