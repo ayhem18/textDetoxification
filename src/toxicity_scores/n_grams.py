@@ -6,7 +6,7 @@ import pickle
 
 from datasets import Dataset
 from collections import defaultdict
-from typing import List, Dict, Union, Iterable
+from typing import List, Dict, Union, Iterable, Set
 from pathlib import Path
 from transformers import AutoTokenizer, DistilBertModel
 from nltk.stem import WordNetLemmatizer
@@ -18,7 +18,6 @@ bert = DistilBertModel.from_pretrained("distilbert-base-uncased")
 
 
 ### FUNCTIONS FOR CREATING THE N-GRAMS
-
 
 def _prepare_sentence(sentence: str, stop_words_set: set) -> List[int]:
     """This function tokenizes, lemmatizes, removes stop words and return the tokens' ids by the Bert-distilled tokenizer. 
@@ -69,19 +68,51 @@ def build_unigram_counter(dataset: Dataset, save_folder: Union[str, Path] = None
     # convert the default dict to a standard Dictionary before serializing it
     uni_gram, bi_gram = dict(uni_gram), dict(bi_gram)
 
-    with open(os.path.join(save_folder, 'uni_gram.pkl'), 'wb') as f:     
+    with open(os.path.join(save_folder, 'uni_gram.obj'), 'wb') as f:     
         # the default is the highest protocol. Let's leave it at that
         pickle.dump(uni_gram, f)
 
-    with open(os.path.join(save_folder, 'bi_gram.pkl'), 'wb') as f:     
+    with open(os.path.join(save_folder, 'bi_gram.obj'), 'wb') as f:     
         # the default is the highest protocol. Let's leave it at that
         pickle.dump(bi_gram, f)
 
     return uni_gram, bi_gram
 
+def get_toxicity_attributes(sentence: str, 
+                            uni_gram: Dict, 
+                            bi_gram: Dict,
+                            uni_threshold: float = 0.099, 
+                            bi_threshold: float = 0.078,
+                            default_toxicity: float = 0.02, 
+                            min_num_words: int = 1) -> set[str]:
+    #1.prepare the sentence
+    s = _prepare_sentence(sentence, pr.standard_stop_words())
+    toxic_attributes_uni = set()
+    toxic_attributes_bi = set()
+
+    for t in s: 
+        tox = uni_gram[t] if t in uni_gram else default_toxicity
+        if tox >= uni_threshold:
+            toxic_attributes_uni.add(t)
+    
+    for i in range(len(s) - 1):
+        bi = (s[i], s[i + 1])
+        tox = bi_gram[bi] if bi in  bi_gram else default_toxicity
+        
+        if tox >= bi_threshold:
+            toxic_attributes_uni.update(bi)
+    
+    # convert all tokens into a single set
+    toxic_attributes_bi.update(toxic_attributes_uni)
+    
+    # if no specific word was considered as a toxicity attribute, we will simply consider the most toxic unigram
+    if len(toxic_attributes_bi) == 0:
+        tokens_sorted = sorted(s, key=lambda t: uni_gram[t], reverse=True)
+        return set(tokens_sorted[:min_num_words])
+
+    return toxic_attributes_bi
 
 ## FUNCTIONS FOR CALCULATING THE TOXICITY OF A SEQUENCE OF TOKENS IDS 
-
 def build_ignore_toxic_map(default_toxicitity: float, stop_words, save_folder: Union[str, Path]=None) -> Dict[str, float]:
     ignore = {}
 

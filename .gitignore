@@ -13,3 +13,4 @@ src/models/s2s/test-trainer
 *checkpoints*
 *.json
 *wandb*
+*.obj
