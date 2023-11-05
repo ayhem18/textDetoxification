@@ -8,3 +8,8 @@ data
 *.pk
 *.pkl
 src/models/s2s/test-trainer
+*.pt
+*src2
+*checkpoints*
+*.json
+*wandb*

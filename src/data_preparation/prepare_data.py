@@ -84,6 +84,8 @@ def data_split(all_data: Union[Dataset, Path, str],
     # read the data
     data = pd.read_csv(all_data) if isinstance(all_data, (Path, str)) else all_data
 
+    data = data.shuffle(seed=69)
+
     if train_portion + val_portion >= 1: 
         raise ValueError(f"The test portion cannot be zero.") 
 

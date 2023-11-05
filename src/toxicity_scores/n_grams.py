@@ -27,7 +27,7 @@ def _prepare_sentence(sentence: str, stop_words_set: set) -> List[int]:
         raise ValueError(f"The stop words must be a set. \nFound: {type(stop_words_set)}")
     lem = WordNetLemmatizer()
     # nested calls were a design choice to ensure the least amount of overhead.
-    result =  bert_tokenizer.convert_tokens_to_ids([lem.lemmatize(t) for t in bert_tokenizer.tokenize(sentence) if t.isalpha() and t not in stop_words_set])
+    result =  [lem.lemmatize(t) for t in pr.tokenize(sentence) if t.isalpha() and t not in stop_words_set]
     return result
 
 def _toxic_unigram_row(source_txt, target_txt, uni_gram, bi_gram, stop_words_set):
