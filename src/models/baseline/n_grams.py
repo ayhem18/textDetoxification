@@ -1,6 +1,7 @@
 """
-This 
+This script contains functionalities needed to estimate the toxicity score of each uni / bi -gram.
 """
+
 import os
 import pickle
 
@@ -30,6 +31,11 @@ def _prepare_sentence(sentence: str, stop_words_set: set) -> List[int]:
     return result
 
 def _toxic_unigram_row(source_txt, target_txt, uni_gram, bi_gram, stop_words_set):
+    """Given source (toxic) and target (neutral) texts as well as the maps and the list of stop words, This function updates the
+    maps (unigram to toxicity score) and (bi-gram to toxicity) with the results of the pair of given sentences
+
+    """
+    # prepare the data
     source_ids, target_ids = _prepare_sentence(source_txt, stop_words_set), _prepare_sentence(target_txt, stop_words_set)   
 
     # add the uni grams
@@ -48,6 +54,10 @@ def _toxic_unigram_row(source_txt, target_txt, uni_gram, bi_gram, stop_words_set
 
 
 def _toxic_unigram_batch(batch: Dict, uni_gram, bi_gram, stop_words):
+    # batch is expected to be a dictionary with fields: 
+    # 1. 'source': batched source sentences
+    # 2. 'text': batched target sentences 
+
     # write the code as list comprehension for computational efficiency.
     _ = [_toxic_unigram_row(source_txt=s, target_txt=t, 
                             uni_gram=uni_gram, 
@@ -85,6 +95,24 @@ def get_toxicity_attributes(sentence: str,
                             bi_threshold: float = 0.078,
                             default_toxicity: float = 0.02, 
                             min_num_words: int = 1) -> set[str]:
+    """_summary_
+
+    Args:
+        sentence (str): input sentence
+        uni_gram (Dict): The map between unigrams and toxicity scores
+        bi_gram (Dict): the map between bi-grams and toxicity scores
+        uni_threshold (float, optional): The threshold for a uni gram to be a toxicity attribute. Defaults to 0.099. 
+        (40% percentil of all toxicity scores)
+        bi_threshold (float, optional): The threshold for a bi-gram to be a toxicity attribute. Defaults to 0.078.
+        (40% percentil of all bigram toxicity scores)
+        default_toxicity (float, optional): The default. Defaults to 0.02.
+        (20% percentile of all uni-gram toxicity)
+        min_num_words (int, optional): The number of uni grams returned in case no toxicity attribute was detected . 
+        Defaults to 1.
+
+    Returns:
+        set[str]: _description_
+    """
     #1.prepare the sentence
     s = _prepare_sentence(sentence, pr.standard_stop_words())
     toxic_attributes_uni = set()
@@ -110,63 +138,61 @@ def get_toxicity_attributes(sentence: str,
         tokens_sorted = sorted(s, key=lambda t: uni_gram[t], reverse=True)
         return set(tokens_sorted[:min_num_words])
 
-    # sort them by their appearance in the sentenc 
-    return sorted(list(toxic_attributes_bi), key=lambda k: sentence.index(k))
+    return toxic_attributes_bi
 
+# ## FUNCTIONS FOR CALCULATING THE TOXICITY OF A SEQUENCE OF TOKENS IDS 
+# def build_ignore_toxic_map(default_toxicitity: float, stop_words, save_folder: Union[str, Path]=None) -> Dict[str, float]:
+#     ignore = {}
 
-## FUNCTIONS FOR CALCULATING THE TOXICITY OF A SEQUENCE OF TOKENS IDS 
-def build_ignore_toxic_map(default_toxicitity: float, stop_words, save_folder: Union[str, Path]=None) -> Dict[str, float]:
-    ignore = {}
-
-    # all special token should be associated with "0" toxicity (except the UNK loss)
-    for tk_id in bert_tokenizer.all_special_ids:
-        ignore[tk_id] = (0 if tk_id != bert_tokenizer.unk_token_id else default_toxicitity)
+#     # all special token should be associated with "0" toxicity (except the UNK loss)
+#     for tk_id in bert_tokenizer.all_special_ids:
+#         ignore[tk_id] = (0 if tk_id != bert_tokenizer.unk_token_id else default_toxicitity)
     
-    # iterate through the tokenizer's vocabulary, and if the tokens have punctuation, set their toxicity score to '0'
-    non_alpha_counter = 0
-    for text, i in bert_tokenizer.vocab.items():
-        if not text.isalpha():
-            non_alpha_counter += 1
-            ignore[i] = 0
+#     # iterate through the tokenizer's vocabulary, and if the tokens have punctuation, set their toxicity score to '0'
+#     non_alpha_counter = 0
+#     for text, i in bert_tokenizer.vocab.items():
+#         if not text.isalpha():
+#             non_alpha_counter += 1
+#             ignore[i] = 0
 
-    print(f"{non_alpha_counter} non alpha tokens")
+#     print(f"{non_alpha_counter} non alpha tokens")
 
-    sw_indices = bert_tokenizer.convert_tokens_to_ids(list(stop_words))
+#     sw_indices = bert_tokenizer.convert_tokens_to_ids(list(stop_words))
 
-    for i in sw_indices:
-        ignore[i] = default_toxicitity
+#     for i in sw_indices:
+#         ignore[i] = default_toxicitity
         
-    save_folder =  os.path.dirname(os.path.realpath(__file__)) if save_folder is None else save_folder
-    with open(os.path.join(save_folder, 'ignore_map.pkl'), 'wb') as f:     
-        # the default is the highest protocol. Let's leave it at that
-        pickle.dump(ignore, f)
+#     save_folder =  os.path.dirname(os.path.realpath(__file__)) if save_folder is None else save_folder
+#     with open(os.path.join(save_folder, 'ignore_map.pkl'), 'wb') as f:     
+#         # the default is the highest protocol. Let's leave it at that
+#         pickle.dump(ignore, f)
 
-    return ignore
+#     return ignore
 
-def indices_toxicity_score(indices: Iterable[int], ignore_map:Dict, uni_gram: Dict, bi_gram: Dict, default_toxicity: float):
-    ignore_indices, toxic_indices = ([i for i, index in enumerate(indices) if index in ignore_map], 
-                                     [i for i, index in enumerate(indices) if index not in ignore_map])
+# def indices_toxicity_score(indices: Iterable[int], ignore_map:Dict, uni_gram: Dict, bi_gram: Dict, default_toxicity: float):
+#     ignore_indices, toxic_indices = ([i for i, index in enumerate(indices) if index in ignore_map], 
+#                                      [i for i, index in enumerate(indices) if index not in ignore_map])
 
-    # default for bigram is 0, default for unigram is the passed value
-    bi_gram.setdefault(0)
-    uni_gram.setdefault(default_toxicity)
+#     # default for bigram is 0, default for unigram is the passed value
+#     bi_gram.setdefault(0)
+#     uni_gram.setdefault(default_toxicity)
 
-    result = [0 for _ in indices]
+#     result = [0 for _ in indices]
 
-    for i in ignore_indices:
-        result[i] += ignore_map[indices[i]] 
+#     for i in ignore_indices:
+#         result[i] += ignore_map[indices[i]] 
     
-    for i in toxic_indices:
-        result[i] += (uni_gram[indices[i]] if indices[i] in uni_gram else 0) 
+#     for i in toxic_indices:
+#         result[i] += (uni_gram[indices[i]] if indices[i] in uni_gram else 0) 
 
-    # add the bi-gram toxicity
-    for j in range(len(toxic_indices) - 1):
-        i1, i2 = indices[toxic_indices[j]], indices[toxic_indices[j + 1]]
-        tox_score = (bi_gram[(i1, i2)] if (i1, i2) in bi_gram else 0) 
-        result[j] += 2 * tox_score
-        result[j + 1] += 2 * tox_score
+#     # add the bi-gram toxicity
+#     for j in range(len(toxic_indices) - 1):
+#         i1, i2 = indices[toxic_indices[j]], indices[toxic_indices[j + 1]]
+#         tox_score = (bi_gram[(i1, i2)] if (i1, i2) in bi_gram else 0) 
+#         result[j] += 2 * tox_score
+#         result[j + 1] += 2 * tox_score
 
-    return result
+#     return result
      
 
 
