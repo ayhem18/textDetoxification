@@ -19,14 +19,6 @@ random.seed(69)
 set_seed(seed=69)
 
 
-def load_aux_data():
-    # set the seed for reproducibility, set_seed(69)
-    aux_data = load_dataset('s-nlp/paradetox')['train'] # the dataset has only one split: 'train'
-    # shuffle the data
-    aux_data = aux_data.rename_column('en_toxic_comment', 'source').rename_column('en_neutral_comment', 'target').shuffle(seed=69)
-    
-    return aux_data
-
 
 def fix_initial_data(initial_data_tsv: Union[Path, str]):
     base_name, ext = os.path.splitext(os.path.basename(initial_data_tsv))
@@ -50,6 +42,17 @@ def fix_initial_data(initial_data_tsv: Union[Path, str]):
     # save the fixed data as csv
     data_folder = Path(initial_data_tsv).parent
     df_fixed.to_csv(os.path.join(data_folder, 'fixed.csv'), index=False)
+
+    return os.path.join(data_folder, 'fixed.csv')
+
+
+def load_aux_data():
+    # set the seed for reproducibility, set_seed(69)
+    aux_data = load_dataset('s-nlp/paradetox')['train'] # the dataset has only one split: 'train'
+    # shuffle the data
+    aux_data = aux_data.rename_column('en_toxic_comment', 'source').rename_column('en_neutral_comment', 'target').shuffle(seed=69)
+    
+    return aux_data
 
 
 def prepare_all_data(fixed_data_file: Union[Path, str], save: bool=True):    
@@ -77,6 +80,7 @@ def prepare_all_data(fixed_data_file: Union[Path, str], save: bool=True):
         all_data.to_csv(os.path.join(data_folder, 'all_data.csv'), index=False, sep=',')
     return all_data
 
+ 
 def data_split(all_data: Union[Dataset, Path, str],
                train_portion: float = 0.96, 
                val_portion: float = 0.02
@@ -99,6 +103,7 @@ def data_split(all_data: Union[Dataset, Path, str],
     return train_data, val_data, test_data
     
 
+
 def _remove_nes_batch(batch: Dict):
     """
     this function is designed to be called by the 'map' function. This function will convert 
@@ -109,14 +114,12 @@ def _remove_nes_batch(batch: Dict):
 def _process_text(text: str) -> str:
     return pr.no_extra_spaces(pr.no_extra_chars(pr.to_lower(text)))
 
-
 def _process_batch(batch):
     """This function recieves  batch of samples from the original data. It returns a new batch where each
     'source' and 'target' text data will be processed using the function above
     """
     new_batch = dict([(k, [_process_text(t) for t in v]) for k, v in batch.items()])
     return new_batch
-
 
 def process_text_data(data: Union[Dataset, Path, str], 
                       save_path: Union[Path, str] = None) -> Dataset:  
@@ -132,3 +135,5 @@ def process_text_data(data: Union[Dataset, Path, str],
         new_data.to_csv(save_path, index=False)
     
     return new_data
+
+

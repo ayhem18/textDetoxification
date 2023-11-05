@@ -14,3 +14,7 @@ src/models/s2s/test-trainer
 *.json
 *wandb*
 *.obj
+
+src/models/final_s2s/seq_2_seq
+
+*.csv

@@ -9,9 +9,11 @@ from typing import Iterable, Union, Dict, List, Tuple
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from pathlib import Path
 
 from src.training_utilities.exp_tracking import create_summary_writer, report_results, _add_metric
 from src.training_utilities.pytorch_utilities import save_model, cleanup
+
 
 
 def compute_rouge(predictions: Iterable[str], 
@@ -159,6 +161,7 @@ def train_custom_summarizer(train_dataloader: DataLoader,
                             num_epochs: int = 5,
                             device: str = None,
                             log_dir: str = None, 
+                            save_path: Union[str, Path] = None,
                             report_per_epoch: int = 5, 
                             ) -> Tuple[Dict[str, List[float]]]:
     
@@ -169,7 +172,9 @@ def train_custom_summarizer(train_dataloader: DataLoader,
     device = ('cuda' if torch.cuda.is_available() else 'cpu') if device is None else device 
     
     # set the SummaryWriter for visualization
-    writer, save_path  = (None, None) if log_dir is None else (create_summary_writer(log_dir, return_path=True))
+    writer, default_save_path = (None, None) if log_dir is None else (create_summary_writer(log_dir, return_path=True))
+
+    save_path = save_path if save_path is not None else default_save_path
 
     # save the results somewhere
     train_losses = []

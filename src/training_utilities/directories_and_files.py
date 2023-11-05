@@ -127,14 +127,21 @@ def unzip_data_file(data_zip_path: Union[Path, str],
     # unzip any files inside the subdirectory
     for file_name in os.listdir(unzipped_dir):
         file_path = os.path.join(unzipped_dir, file_name)
+        
         if zipfile.is_zipfile(file_path):
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 # extract the data to current directory
                 zip_ref.extractall(unzipped_dir)
+            
+            zip_ref.close()
 
-            # remove the zip files if the flag is set to True
-            if remove_inner_zip_files:
-                os.remove(file_path)
+    # remove any zip files left
+    for file_name in os.listdir(unzipped_dir):
+        basename, ext = os.path.splitext(file_name)
+    
+        if ext == '.zip':
+            os.remove(os.path.join(unzipped_dir, file_name))                                    
+
 
     # squeeze all the directories
     for file_name in os.listdir(unzipped_dir):

@@ -5,7 +5,7 @@ This is a utility script
 # preprocessing functions
 import re
 import requests
-import os
+import os, sys
 import nltk
 import spacy 
 
@@ -15,6 +15,21 @@ from nltk.tokenize import word_tokenize, RegexpTokenizer
 
 from typing import List, Set, Union, Iterable, Dict
 from nltk.stem import WordNetLemmatizer
+from pathlib import Path
+from datasets import load_dataset
+
+
+HOME = os.getcwd()
+current = HOME 
+while 'src' not in os.listdir(current):
+    current = Path(current).parent
+
+PARENT_DIR = str(current)
+sys.path.append(str(current))
+sys.path.append(os.path.join(str(current), 'data_analysis'))
+sys.path.append(os.path.join(str(current), 'evaluation'))
+sys.path.append(os.path.join(str(current), 'text_processing'))
+
 
 ## Vocabulary related functions
 
@@ -155,3 +170,35 @@ def uniform_ne_batched(strings: Iterable[str], nlp = None) -> List[str]:
     pipe = nlp.pipe(texts=strings, disable=['tagger', 'attribute_ruler', 'senter'])
     
     return [_uniform_ne(doc, SPACY_LABELS) for doc in pipe]
+
+import random
+
+def process_batch(batch: Dict, nlp):
+    p = random.random()
+    if p < 10 ** -5:
+        print("really ?")
+    return dict([(k, [process_text(t) for t in v]) for k, v in ({"source": uniform_ne_batched(batch['source'], nlp), 
+                                                                 "target": uniform_ne_batched(batch['target'], nlp)}).items()]) 
+
+
+
+def process_text(text: str) -> str:
+    return no_extra_spaces(no_extra_chars(to_lower(text)))
+
+
+def final_process(all_data_path: Union[Path, str]):
+    data = load_dataset("csv", data_files=all_data_path, split='train')
+    # make sure to filter any non-string data
+    data = data.filter(lambda x: isinstance(x['source'], str) and isinstance(x['target'], str))
+
+    # load the nlp object in advnace
+    nlp = spacy.load("en_core_web_sm")
+    processed_data = data.map(lambda b: process_batch(b, nlp), batched=True)
+    processed_data = processed_data.filter(lambda s: (isinstance(s['source'], str) and isinstance(s['target'], str)))
+    
+    processed_data.to_csv(os.path.join(PARENT_DIR, 'data', 'all_data_processed.csv'), index=False)
+    return processed_data 
+
+
+def make_summarized_data():
+    pass

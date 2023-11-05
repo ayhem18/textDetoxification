@@ -10,7 +10,9 @@ import random
 import pickle
 
 import pandas as pd
+import torch
 
+from transformers import AutoModelForMaskedLM
 from datasets import load_dataset, Dataset
 from empiricaldist import Cdf
 from transformers import pipeline, AutoTokenizer
@@ -21,7 +23,7 @@ while 'src' not in os.listdir(current):
     current = Path(current).parent
 
 PARENT_DIR = current
-DATA_FOLDER = os.path.join(PARENT_DIR,  'data')
+DATA_FOLDER = os.path.join(PARENT_DIR,  'src', 'data')
 sys.path.append(str(current))
 sys.path.append(os.path.join(str(current), 'data_analysis'))
 sys.path.append(os.path.join(str(current), 'evaluation'))
@@ -76,16 +78,49 @@ def build_maps(processed_data: Dataset):
     return u, b, toxicity_threshold_u, toxicity_threshold_bi, default_toxicitiy
 
 
+def mask_sentence(s: str, masks: List[str], mask_token):
+    ls = pr.lemmatize(s)
+    return " ".join([(c if c not in masks else mask_token) for c in ls])
 
 
+def baseline_predict(sentences : str, 
+                     model,
+                     tokenizer,
+                     uni_gram, 
+                     bi_gram,  
+                     ):
+
+    mask_token = tokenizer.mask_token
+
+    # first extract the toxicity attribued
+    masks = [ng.get_toxicity_attributes(s, 
+                                    uni_gram=uni_gram, 
+                                    bi_gram=bi_gram) for s in sentences]
+    
+    masked_sentences = [mask_sentence(s, m, mask_token) for s, m in zip(sentences, masks)]
+
+    inputs = tokenizer(masked_sentences
+    , return_tensors="pt", padding=True)
+    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1]
+
+
+    logits = model(**inputs).logits
+    mask_token_logits = logits[0, mask_token_index, :]
+    top_tokens = torch.topk(mask_token_logits, 1, dim=1).indices.tolist()
+
+    return [text.replace(tokenizer.mask_token, tokenizer.decode(token)) for text, token in zip(masked_sentences, top_tokens)]
+
+
+from src.training_utilities.pytorch_utilities import cleanup
 
 if __name__ == '__main__':
+    
+    cleanup()
+    data = None
     try: 
-        data = prd.prepare_all_data(fixed_data_file=os.path.join(DATA_FOLDER, 'fixed.csv'), save=False)
+        all_processed_data_path = os.path.join(DATA_FOLDER, 'all_data_processed.csv')
     except FileNotFoundError:
-        print("PLEASE MAKE SURE TO RUN THE DATA SCRIPS BEFORE RUNNING THE MODEL SCRIPTS!!\n ABORTING !!")
-
-    all_processed_data_path = os.path.join(DATA_FOLDER, 'all_data_processed.csv')
+        data = prd.prepare_all_data(fixed_data_file=os.path.join(DATA_FOLDER, 'fixed.csv'), save=False)
 
     # either prepare the data or load it    
     if not os.path.exists(all_processed_data_path):    
@@ -102,19 +137,29 @@ if __name__ == '__main__':
     toxicity_threshold_u, toxicity_threshold_bi, default_toxicitiy = None, None, None
 
     if os.path.exists(uni_path) and os.path.exists(bi_path):
-        u, b = pickle.load(open(uni_path), 'rb')
+        u, b = pickle.load(open(uni_path, 'rb')), pickle.load(open(bi_path, 'rb'))
     else:
-        u, b, toxicity_threshold_u, toxicity_threshold_bi, default_toxicitiy = build_maps(processed_data)
+        u, b, toxicity_threshold_u, toxicity_threshold_bi, default_toxicitiy =  build_maps(processed_data)
 
-    test_data = pd.read_csv(os.path.join(DATA_FOLDER, 'test_splits.csv'), nrows=10)
+    # make sure 'u' and 'b' have float as values
+    if isinstance(list(u.values())[0], Dict):
+        u, b = (dict([(k, (v["source"] + 1) / (v["target"] + 1)) for k, v in u.items()]) , 
+        dict([(k, (v["source"] + 1) / (v["target"] + 1)) for k, v in b.items()]))  
 
+    test_data = pd.read_csv(os.path.join(DATA_FOLDER, 'test_split.csv'))
 
-    ckpnt = "distilbert-base-uncased"
-    mask_filler = pipeline("fill-mask", ckpnt)
-    # bert = AutoModelForMaskedLM.from_pretrained(ckpnt)
-    bert_tokenizer = AutoTokenizer.from_pretrained(ckpnt)
-    bert_tokenizer.mask_token
+    sentences = test_data['source'].tolist()
 
-    
-    
-    
+    checkpoint = 'distilbert-base-uncased'
+    model = AutoModelForMaskedLM.from_pretrained(checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+
+    results = []
+    for i in range(0, len(sentences), 100): 
+        results.extend(baseline_predict(sentences=sentences[i : i + 100], model=model, tokenizer=tokenizer, uni_gram=u, bi_gram=b))
+
+    # write them to a file
+    with open(os.path.join(SCRIPT_DIR, 'baseline.txt'), 'w') as file:
+        for r in results:
+            file.write(f'{r}\n')
+        

@@ -76,17 +76,20 @@ def build_unigram_counter(dataset: Dataset, save_folder: Union[str, Path] = None
     
     save_folder =  os.path.dirname(os.path.realpath(__file__)) if save_folder is None else save_folder
     # convert the default dict to a standard Dictionary before serializing it
-    uni_gram, bi_gram = dict(uni_gram), dict(bi_gram)
+    uni, nbi = dict(uni_gram), dict(bi_gram)
+
+    # make sure to convert it to the values needed
+    u, b = dict([(k, (v["source"] + 1) / (v["target"] + 1)) for k, v in uni.items()]) , dict([(k, (v["source"] + 1) / (v["target"] + 1)) for k, v in bi_gram.items()])  
 
     with open(os.path.join(save_folder, 'uni_gram.obj'), 'wb') as f:     
         # the default is the highest protocol. Let's leave it at that
-        pickle.dump(uni_gram, f)
+        pickle.dump(u, f)
 
     with open(os.path.join(save_folder, 'bi_gram.obj'), 'wb') as f:     
         # the default is the highest protocol. Let's leave it at that
-        pickle.dump(bi_gram, f)
+        pickle.dump(b, f)
 
-    return uni_gram, bi_gram
+    return u, b
 
 def get_toxicity_attributes(sentence: str, 
                             uni_gram: Dict, 
@@ -140,60 +143,4 @@ def get_toxicity_attributes(sentence: str,
 
     return toxic_attributes_bi
 
-# ## FUNCTIONS FOR CALCULATING THE TOXICITY OF A SEQUENCE OF TOKENS IDS 
-# def build_ignore_toxic_map(default_toxicitity: float, stop_words, save_folder: Union[str, Path]=None) -> Dict[str, float]:
-#     ignore = {}
-
-#     # all special token should be associated with "0" toxicity (except the UNK loss)
-#     for tk_id in bert_tokenizer.all_special_ids:
-#         ignore[tk_id] = (0 if tk_id != bert_tokenizer.unk_token_id else default_toxicitity)
-    
-#     # iterate through the tokenizer's vocabulary, and if the tokens have punctuation, set their toxicity score to '0'
-#     non_alpha_counter = 0
-#     for text, i in bert_tokenizer.vocab.items():
-#         if not text.isalpha():
-#             non_alpha_counter += 1
-#             ignore[i] = 0
-
-#     print(f"{non_alpha_counter} non alpha tokens")
-
-#     sw_indices = bert_tokenizer.convert_tokens_to_ids(list(stop_words))
-
-#     for i in sw_indices:
-#         ignore[i] = default_toxicitity
-        
-#     save_folder =  os.path.dirname(os.path.realpath(__file__)) if save_folder is None else save_folder
-#     with open(os.path.join(save_folder, 'ignore_map.pkl'), 'wb') as f:     
-#         # the default is the highest protocol. Let's leave it at that
-#         pickle.dump(ignore, f)
-
-#     return ignore
-
-# def indices_toxicity_score(indices: Iterable[int], ignore_map:Dict, uni_gram: Dict, bi_gram: Dict, default_toxicity: float):
-#     ignore_indices, toxic_indices = ([i for i, index in enumerate(indices) if index in ignore_map], 
-#                                      [i for i, index in enumerate(indices) if index not in ignore_map])
-
-#     # default for bigram is 0, default for unigram is the passed value
-#     bi_gram.setdefault(0)
-#     uni_gram.setdefault(default_toxicity)
-
-#     result = [0 for _ in indices]
-
-#     for i in ignore_indices:
-#         result[i] += ignore_map[indices[i]] 
-    
-#     for i in toxic_indices:
-#         result[i] += (uni_gram[indices[i]] if indices[i] in uni_gram else 0) 
-
-#     # add the bi-gram toxicity
-#     for j in range(len(toxic_indices) - 1):
-#         i1, i2 = indices[toxic_indices[j]], indices[toxic_indices[j + 1]]
-#         tox_score = (bi_gram[(i1, i2)] if (i1, i2) in bi_gram else 0) 
-#         result[j] += 2 * tox_score
-#         result[j + 1] += 2 * tox_score
-
-#     return result
      
-
-
-

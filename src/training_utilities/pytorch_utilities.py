@@ -57,7 +57,6 @@ def save_model(model: nn.Module, path: Union[str, Path] = None) -> None:
     # finally save the model.
     torch.save(model.state_dict(), path)
 
-
 def load_model(base_model: nn.Module,
                path: Union[str, Path]) -> nn.Module:
     # first process the path
