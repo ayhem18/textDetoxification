@@ -7,3 +7,4 @@ data
 *tfevents*
 *.pk
 *.pkl
+src/models/s2s/test-trainer

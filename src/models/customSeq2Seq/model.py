@@ -3,42 +3,47 @@
 
 import torch
 from torch import nn
+
+from torch.utils.data import DataLoader
 from typing import Optional, Dict
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, RobertaModel
 
 NOTEBOOK_DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-CHECKPOINT = 'distilbert-base-uncased'  # let's keep it simple as for the first iteration
-MODEL = AutoModel.from_pretrained(CHECKPOINT).to(NOTEBOOK_DEVICE)
-TOKENIZER = AutoTokenizer.from_pretrained(CHECKPOINT)
+CHECKPOINT = 'roberta-base'  # let's keep it simple as for the first iteration
+
+# MODEL = RobertaModel.from_pretrained(CHECKPOINT).to(NOTEBOOK_DEVICE)
+# TOKENIZER = AutoTokenizer.from_pretrained(CHECKPOINT)
 
 
-class BertBasedEncoder(nn.Module):
+class RobertaBasedEncoder(nn.Module):
     def __init__(self,
                  hidden_dim: int = None,
-                 num_layers: int = 1,
+                 num_layers: int = 2,
                  dropout: float = 0.3,
-                 checkpoint: str = 'distilbert-base-uncased',
+                 checkpoint: str = 'roberta-base',
                  freeze: bool = True,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # first make sure to initialize the bert model
-        self.bert_model = AutoModel.from_pretrained(checkpoint)
+        self.roberta_model = RobertaModel.from_pretrained(checkpoint)
 
         # make sure to freeze bert
         if freeze:
-            for p in self.bert_model.parameters():
-                p.requires_grad = False
+            for name, p in self.roberta_model.named_parameters():
+                if name not in ['pooler.dense.bias', 'pooler.dense.weight']:  
+                    p.requires_grad = False
+                else:
+                    print(f"trainable parameter: {name}")
 
         # extract the embedding dimensions and the vocabulary size
-        emb_dim = self.bert_model.config.hidden_size
-
+        self.emb_dim = self.roberta_model.config.hidden_size
         # set the default value for the hidden
-        self.hidden_dim = emb_dim // 2 if hidden_dim is None else hidden_dim
+        self.hidden_dim = (self.emb_dim // 2) if hidden_dim is None else hidden_dim 
         # set the dropout layer
         self.dropout = nn.Dropout(p=dropout)
         # set the RNN
-        self.rnn = nn.LSTM(input_size=emb_dim,
+        self.rnn = nn.LSTM(input_size=self.emb_dim,
                            hidden_size=self.hidden_dim,
                            dropout=dropout,
                            num_layers=num_layers,
@@ -52,29 +57,31 @@ class BertBasedEncoder(nn.Module):
 
     def forward(self, batch: Dict):
         # first pass it through the rnn
-        rnn_output, (hidden_state, cell_state) = self.rnn(self.dropout(self.bert_model(**batch).last_hidden_state))
+        rnn_output, (hidden_state, cell_state) = self.rnn(self.dropout(self.roberta_model(**batch).last_hidden_state))
         # the shape according to LSTM documentation are:
         # rnn_output: (batch, L, 2 * self.hidden_size)
         # hidden_state, cell_state (2 * num_layers, batch, self.hidden_size)
         return rnn_output, hidden_state, cell_state
 
 
-class DecoderRNN(nn.Module):
+class RobertaBasedDecoder(nn.Module):
     def __init__(self,
                  token_classifier: nn.Module,
-                 emb_dim: int,
-                 output_size: int,
                  num_layers: int = 2,
                  dropout: float = 0.2,
                  go_label: int = -1):
 
-        super(DecoderRNN, self).__init__()
+        super(RobertaBasedDecoder, self).__init__()
         # this label is used as the very first input for the decoder: to start decoding the encoder's hidden state.
         self.go_label = go_label
-        self.emb_dim = emb_dim
+
+        # the embedding size is the same the embedding dimenion of the Roberta model
+        self.emb_dim = 768 
+        self.hidden_size = self.emb_dim // 2
+
         # the decoder is a sequence model as well
-        self.rnn = nn.LSTM(input_size=emb_dim,
-                           hidden_size=output_size,
+        self.rnn = nn.LSTM(input_size=self.emb_dim,
+                           hidden_size=self.hidden_size,
                            batch_first=True,
                            num_layers=num_layers,
                            dropout=dropout,
@@ -107,7 +114,9 @@ class DecoderRNN(nn.Module):
             raise ValueError(
                 f"either the 'batch_size' or the 'target' arguments must be explicitly passed. Both of them are {None}")
 
+
         batch_size = target.size(dim=0) if target is not None else batch_size
+        L = target.size(dim=1)
         # the first input is of the size (batch_size, L = 1, input_size = hidden_size)
         # according to the documentation of the nn.embedding layer, padding_idx are initialized to zero_values
         # we are using -1 as the label that represents
@@ -125,9 +134,10 @@ class DecoderRNN(nn.Module):
             decoder_outputs.append(decoder_output.unsqueeze(dim=1))
 
             if target is not None:
-                # using the target tensor is a technique known as Teacher Forcing
-                # the target is expected to be of shape: (batch, L) (as each label is uni dimensional)
-                decoder_input = target[:, i].unsqueeze(dim=-1)
+                # the i-th element of the sequence should be selected
+                decoder_input = target[:, i, :]
+                assert decoder_input.shape == (batch_size, 1, self.emb_dim), f"shape of the decoder input: {decoder_input.shape}"
+                
             else:
                 _, best_prediction = decoder_output.topk(1)
                 # detach (so that the error from the previous output is not propagated further to the rest of the sequence)
@@ -141,3 +151,4 @@ class DecoderRNN(nn.Module):
         # reduce to classes predictions
         # decoder_outputs = F.log_softmax(decoder_outputs, dim=-1)
         return decoder_outputs, decoder_hidden_state, decoder_cell_state
+

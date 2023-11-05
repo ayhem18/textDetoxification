@@ -30,26 +30,34 @@ def train_per_epoch(encoder: BertBasedEncoder,
     # set the train loss and metrics
     train_loss, train_acc = 0, 0
 
-    for _, (x, y) in enumerate(train_dataloader):
-        x.to(device)
-        y.to(device)
+    for batch in train_dataloader:
+        batch = {k:v.to(device) for k, v in batch.items()}
+
+        batch_input = {k: v for k, v in batch.items() if k != 'labels' }
+
+        input_ids, attention_mask, labels = batch['input_ids'], batch['attention_mask'], batch['labels']
+
         # first set both optimizers to zero gradients
         e_opt.zero_grad()
         d_opt.zero_grad()
 
         # extract the batch size, sequence length (with padding) 
-        batch_size, seq_length = x.shape
+        batch_size, seq_length = input_ids.shape
 
-        _, hidden_state, cell_state = encoder.forward(x)
+        _, hidden_state, cell_state = encoder.forward(batch_input)
         # pass the outputs of the encoder to the decoder
-        decoder_outputs, _ , _ = decoder.forward(hidden_state, cell_state, max_seq_length=seq_length, batch_size=batch_size)
+        decoder_outputs, _ , _ = decoder.forward(hidden_state, 
+                                                 cell_state, 
+                                                 max_seq_length=seq_length, 
+                                                 batch_size=batch_size, 
+                                                 target=labels)
 
         # the decoder's outputs are expected to be of shape (batch_size, seq_length, num_classes)
         loss = torch.zeros(size=()) # scalar vector
         
         for batch_index in range(batch_size):
             output_index = decoder_outputs[batch_index]
-            y_index = y[batch_index].squeeze().to(torch.long)
+            y_index = labels[batch_index].squeeze().to(torch.long)
 
             seq_loss = torch.mean(loss_function(output_index, y_index))
             loss = torch.add(loss, seq_loss)
@@ -65,7 +73,7 @@ def train_per_epoch(encoder: BertBasedEncoder,
         d_opt.step()
 
         y_pred = decoder_outputs.argmax(dim=-1)
-        train_acc += (y_pred == y).type(torch.float32).mean().item()
+        train_acc += (y_pred == labels).type(torch.float32).mean().item()
 
     train_acc = train_acc / len(train_dataloader)
     train_loss = train_loss / len(train_dataloader)
@@ -123,7 +131,7 @@ def val_per_epoch(encoder: BertBasedEncoder,
     return val_loss, val_acc
 
 
-def train_model(
+def strain_model(
                 encoder: BertBasedEncoder, 
                 decoder: DecoderRNN,
                 train_dataloader: DataLoader[torch.Tensor],
